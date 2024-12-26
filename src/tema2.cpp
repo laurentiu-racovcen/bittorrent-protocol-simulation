@@ -10,12 +10,6 @@
 
 using namespace std;
 
-#define TRACKER_RANK 0
-#define MAX_FILES 10
-#define MAX_FILENAME 15
-#define HASH_SIZE 32
-#define MAX_CHUNKS 100
-
 void *download_thread_func(void *arg) {
     int rank = *(int*) arg;
 
@@ -38,6 +32,24 @@ void *upload_thread_func(void *arg) {
 }
 
 void tracker(int numtasks, int rank) {
+    vector<file_info_t> files_info;
+    cout << "tracker rank: "<< rank << "\n";
+
+    for (int i = 1; i < numtasks; i++) {
+        MPI_Status status;
+        client_files_t client_files;
+        cout << "\ntracker: receiving message...\n";
+
+        MPI_Recv(&client_files, sizeof(client_files_t), MPI_BYTE, i, i, MPI_COMM_WORLD, &status);
+        cout << "\ntracker: message received from client " << i
+            << "\n first file name is: " << client_files.files[0].name
+            << "\n first file num seg: " << client_files.files[0].segments_num
+            << "\n files number: " << client_files.files_num
+            << "\n first seg: " << client_files.files[0].segments[0] 
+            << "\n last seg: " << client_files.files[client_files.files_num-1].segments[client_files.files[client_files.files_num-1].segments_num-1]
+            << "\n tracker: status received: " << status._ucount << "\n";
+    }
+
     /* TODO: initialize the file-seeds list:
      * map<file_name, seeds list>
      */
@@ -49,11 +61,10 @@ void tracker(int numtasks, int rank) {
      * trimite un "ACK" catre toti clientii */
 }
 
-/* Function that reads a file and stores its data */
+/* Function that reads a client file and stores its data */
 void get_client_data(int rank,
-                    vector<client_file_t> *client_files,
-                    vector<string> *wanted_file_names,
-                    unsigned long *initial_buffer_size)
+                    client_files_t *client_files,
+                    vector<string> *wanted_file_names)
 {
     /* read peer's file */
     ifstream fin("in" + to_string(rank) + ".txt");
@@ -61,55 +72,37 @@ void get_client_data(int rank,
     /* read peer's files number */
     string line;
     getline(fin, line);
-    unsigned long files_num = stoul(line);
+    client_files->files_num = stoul(line);
 
     /* initialize files data */
-    cout << "peer files nr = " + to_string(files_num) + ", peer rank = " + to_string(rank) + "\n";
-
-    /* initialize initial buffer size */
-    (*initial_buffer_size) = sizeof(unsigned long);
-
-    cout << "init buf siz = " << (*initial_buffer_size);
+    cout << "peer files nr = " + to_string(client_files->files_num) + ", peer rank = " + to_string(rank) + "\n";
 
     /* read peer's files details */
-    for (size_t i = 0; i < files_num; i++) {
+    for (size_t i = 0; i < client_files->files_num; i++) {
         /* read current file's details */
         string file_details_line;
         getline(fin, file_details_line);
         stringstream file_details_stream(file_details_line);
 
         /* extract current file name */
-        client_file_t current_file;
-        file_details_stream >> current_file.name;
-
-        /* add current file name size in buffer size */
-        (*initial_buffer_size) += sizeof(unsigned long);
-        (*initial_buffer_size) += current_file.name.size();
+        string temp_name;
+        file_details_stream >> temp_name;
+        strcpy(client_files->files[i].name, temp_name.c_str());
 
         /* extract current file segments number */
         string segments_num_string;
         file_details_stream >> segments_num_string;
-        current_file.segments_num = stoul(segments_num_string);
-
-        /* add current file segments number in buffer size */
-        (*initial_buffer_size) += sizeof(unsigned long);
-
-        /* add current file segments size in buffer size */
-        (*initial_buffer_size) += HASH_SIZE * current_file.segments_num;
+        client_files->files[i].segments_num = stoul(segments_num_string);
 
         /* extract current file segments */
-        for (size_t j = 0; j < current_file.segments_num; j++) {
+        for (size_t j = 0; j < client_files->files[i].segments_num; j++) {
             string current_segment;
             getline(fin, current_segment);
-            current_file.segments.push_back(current_segment);
+            strcpy(client_files->files[i].segments[j], current_segment.c_str());
         }
-
-        /* insert current file details in vector */
-        client_files->push_back(current_file);
-        cout << "current buf size = " << (*initial_buffer_size);
     }
 
-    /* read peer's wanted files */
+    /* read peer's wanted files names */
     getline(fin, line);
     unsigned long wanted_files_num = stoul(line);
 
@@ -129,59 +122,35 @@ void peer(int numtasks, int rank) {
     int r;
 
     /* initialize files data */
-    vector<client_file_t> files;
+    client_files_t client_files;
     vector<string> wanted_file_names;
 
     /* declare initial buffer size */
-    unsigned long initial_buffer_size = 0;
-    get_client_data(rank, &files, &wanted_file_names, &initial_buffer_size);
+    get_client_data(rank, &client_files, &wanted_file_names);
 
-    /* initialize initial send buffer */
-    char *initial_send_buffer = (char*) calloc(initial_buffer_size, sizeof(char));
-    char *buf_ptr_copy = initial_send_buffer;
+    cout << "files struct size = " << sizeof(client_files_t) << "\n";
 
-    /* copy the files number and increment the pointer */
-    unsigned long files_num = files.size();
-    memcpy(initial_send_buffer, &files_num, sizeof(unsigned long));
-    initial_send_buffer += sizeof(unsigned long);
-
-    for (size_t i = 0; i < files.size(); i++) {
-        /* add current file name and increment the pointer
-         * (not NULL-terminated) */
-        unsigned long file_name_size = files[i].name.size();
-        memcpy(initial_send_buffer, &file_name_size, sizeof(unsigned long));
-        initial_send_buffer += sizeof(unsigned long);
-        memcpy(initial_send_buffer, ((char*) files[i].name.c_str()), files[i].name.size());
-        initial_send_buffer += files[i].name.size();
-
-        cout << "file name: " << files[i].name << "\n";
-        cout << "file segments number: " << files[i].segments_num<< "\n";
-
-        /* add current file segments number and increment the pointer */
-        memcpy(initial_send_buffer, &(files[i].segments_num), sizeof(unsigned long));
-        initial_send_buffer += sizeof(unsigned long);
+    for (size_t i = 0; i < client_files.files_num; i++) {
+        cout << "file name: " << client_files.files[i].name << "\n";
+        cout << "file segments number: " << client_files.files[i].segments_num << "\n";
+        cout << "segments:\n";
 
         /* add current file segments and increment the pointer */
-        for (size_t j = 0; j < files[i].segments_num; j++) {
-            memcpy(initial_send_buffer, files[i].segments[j].c_str(), HASH_SIZE);
-            initial_send_buffer += HASH_SIZE;
-            cout << files[i].segments[j] << "\n";
+        for (size_t j = 0; j < client_files.files[i].segments_num; j++) {
+            cout << client_files.files[i].segments[j] << "\n";
         }
     }
 
-    cout << "segments:\n";
     cout << "wanted file names:\n";
     for (size_t i = 0; i < wanted_file_names.size(); i++) {
         cout << wanted_file_names[i] << "\n";
     }
 
-    /* copy the initial pointer of the buffer */
-    initial_send_buffer = buf_ptr_copy;
-
     /* send this client's files data (file names and segments) to the tracker */
-    cout << "send buffer size: " << initial_buffer_size << "\n";
+    cout << "send buffer size: " << sizeof(client_files_t) << "\n";
     cout << "sending all the files: " << "\n";
-    MPI_Send(initial_send_buffer, initial_buffer_size, MPI_CHAR, TRACKER_RANK, rank, MPI_COMM_WORLD);
+    MPI_Send(&client_files, sizeof(client_files_t), MPI_BYTE, TRACKER_RANK, rank, MPI_COMM_WORLD);
+    cout << "\nclient: message sent! \n";
 
     r = pthread_create(&download_thread, NULL, download_thread_func, (void *) &rank);
     if (r) {
