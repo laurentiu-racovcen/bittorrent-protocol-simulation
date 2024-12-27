@@ -11,47 +11,135 @@
 
 using namespace std;
 
+/* Function that requests from tracker all
+ * the wanted files swarms and stores them */
+void get_swarms_from_tracker(int client_rank, vector<wanted_file_info_t> *client_wanted_files) {
+    cout << "! client " << client_rank << ": wanted files nr: " << client_wanted_files->size() << "\n";
+    /* request all wanted files swarms from tracker */
+    for (size_t i = 0; i < client_wanted_files->size(); i++) {
+        cout << "client " << client_rank << ": sending to tracker a file request of file: " << client_wanted_files->at(i).name << "\n";
+
+        /* generate request message */
+        message_t message;
+        message.code = CLIENT_REQUEST_CODE;
+        message.source_rank = client_rank;
+        strcpy(message.content, client_wanted_files->at(i).name);
+
+        MPI_Send(&message, sizeof(message_t), MPI_CHAR, TRACKER_RANK, TRACKER_RANK, MPI_COMM_WORLD);
+        cout << "\nclient " << client_rank << ": sent request message of file " << client_wanted_files->at(i).name << "\n";
+
+        /* receive file swarm from tracker */
+        file_info_t recv_file_info;
+        MPI_Status status;
+        MPI_Recv(&recv_file_info, sizeof(file_info_t), MPI_BYTE, TRACKER_RANK, TRACKER_RANK, MPI_COMM_WORLD, &status);
+
+        /* update current wanted file info */
+        memcpy(&client_wanted_files->at(i).segments_swarms, &recv_file_info.segments_swarms, sizeof(swarm_info_t));
+
+        /* if it's the first swarm message from tracker,
+         * copy the segments hashes */
+        if (client_wanted_files->at(i).segments_num == 0) {
+            memcpy(client_wanted_files->at(i).segments_hashes, recv_file_info.segments_hashes, MAX_SEGMENTS*(HASH_SIZE+1));
+            client_wanted_files->at(i).segments_num = recv_file_info.segments_num;
+        }
+
+        cout << "\nclient " << client_rank
+            << ": received from tracker the swarm of file " << recv_file_info.name
+            << ", last seg hash = " << client_wanted_files->at(i).segments_hashes[client_wanted_files->at(i).segments_num-1]
+            << "\n";
+    }
+}
+
+/* Function that sends a non-received segment request message to a peer/seed,
+ * and then receives the requested segment */
+
+void send_next_segment_request(int rank, wanted_file_info_t *wanted_file) {
+    /* generate file segment request message for peer/seed */
+    message_t send_message;
+    send_message.code = SEGMENT_REQUEST_CODE;
+    send_message.source_rank = rank;
+    strcpy(send_message.content, wanted_file->segments_hashes[wanted_file->received_segments_num]);
+
+    /* for efficiency purposes, every segment request is
+     * for a random peer/seed, to not overload a certain peer/seed */
+
+    //  cout << "clients number: " << wanted_file->segments_swarms[wanted_file->received_segments_num].clients_num;
+    int random_client_index = rand() % wanted_file->segments_swarms[wanted_file->received_segments_num].clients_num;
+    int dest_client_rank = wanted_file->segments_swarms[wanted_file->received_segments_num].clients[random_client_index].rank;
+
+    /* send segment request to found client */
+    MPI_Send(&send_message, sizeof(message_t), MPI_CHAR, dest_client_rank, rank, MPI_COMM_WORLD);
+
+    cout << "\nclient " << rank
+        << " -> client " << dest_client_rank
+        << ": sent segment " << wanted_file->received_segments_num
+        << " (" << wanted_file->segments_hashes[wanted_file->received_segments_num]
+        << ") request message of file " << wanted_file->name << "\n";
+
+    /* receive the file segment from dest_client_rank
+     * (actually, the "ACK" message of segment) */
+    MPI_Status recv_status;
+    message_t recv_message;
+    MPI_Recv(&recv_message, sizeof(message_t), MPI_BYTE, TRACKER_RANK, TRACKER_RANK, MPI_COMM_WORLD, &recv_status);
+
+    /* check if the hash is the same as requested + ACK string */
+    if (recv_message.code != SEGMENT_RESPONSE_CODE
+     || strcmp(recv_message.content, wanted_file->segments_hashes[wanted_file->received_segments_num]) != 0
+     || strcmp(recv_message.content + HASH_SIZE + 1, "ACK") != 0) {
+        exit(-2);
+    }
+
+    cout << "client " << rank << " received hash ack: " << wanted_file->segments_hashes[wanted_file->received_segments_num] << "\n";
+
+    /* mark segment as received */
+    wanted_file->received_segments[wanted_file->received_segments_num] = true;
+
+    /* increment received segments number */
+    wanted_file->received_segments_num++;
+}
+
 void *download_thread_func(void *arg) {
     download_thread_arg *download_arg = (download_thread_arg*) arg;
+    vector<wanted_file_info_t> *wanted_files = download_arg->wanted_files;
+    unsigned int received_files_count = 0;
+    unsigned int segments_downloaded_num = 0;
 
-    // TODO: put the following for in a function "get_files_swarms":
-
-            cout << "! client " << download_arg->rank << ": wanted files nr: " << download_arg->wanted_files->size() << "\n";
-            /* request all wanted files swarms from tracker */
-            for (size_t i = 0; i < download_arg->wanted_files->size(); i++) {
-                cout << "client " << download_arg->rank << ": sending to tracker a file request of file: " << download_arg->wanted_files->at(i).name << "\n";
-
-                /* generate request message */
-                message_t message;
-                message.code = CLIENT_REQUEST_CODE;
-                message.source_rank = download_arg->rank;
-                strcpy(message.content, download_arg->wanted_files->at(i).name);
-
-                MPI_Send(&message, sizeof(message_t), MPI_CHAR, TRACKER_RANK, TRACKER_RANK, MPI_COMM_WORLD);
-                cout << "\nclient " << download_arg->rank << ": sent request message of file " << download_arg->wanted_files->at(i).name << "\n";
-
-                /* receive file swarm from tracker */
-                file_info_t recv_file_info;
-                MPI_Status status;
-                MPI_Recv(&recv_file_info, sizeof(file_info_t), MPI_BYTE, TRACKER_RANK, TRACKER_RANK, MPI_COMM_WORLD, &status);
-
-                /* update current wanted file info */
-                memcpy(&download_arg->wanted_files->at(i).swarm, &recv_file_info.swarm, sizeof(swarm_info_t));
-                if (download_arg->wanted_files->at(i).segments_num == 0) {
-                    memcpy(&download_arg->wanted_files->at(i).segments_hashes, &recv_file_info.segments_hashes, MAX_SEGMENTS*(HASH_SIZE+1));
-                    download_arg->wanted_files->at(i).segments_num = recv_file_info.segments_num;
-                }
-
-                cout << "\nclient " << download_arg->rank
-                    << ": received from tracker the swarm of file " << recv_file_info.name
-                    << ", last seg hash = " << download_arg->wanted_files->at(i).segments_hashes[download_arg->wanted_files->at(i).segments_num-1]
-                    << "\n";
-            }
+    /* get swarm lists of client's wanted files from tracker */
+    get_swarms_from_tracker(download_arg->rank, wanted_files);
 
     cout << "\n,,, client " << download_arg->rank << ": number of segments of first file: " << download_arg->wanted_files->at(0).segments_num << "\n";
-    
-    /* TODO: send segment hash to a client and receive
-       the contents corresponding to the hash */
+
+    while (true) {
+        /* search for unreceived files segments */
+        for (size_t i = 0; i < wanted_files->size(); i++) {
+            if (wanted_files->at(i).received_segments_num < wanted_files->at(i).segments_num) {
+                send_next_segment_request(download_arg->rank, &wanted_files->at(i));
+                segments_downloaded_num++;
+            } else if (wanted_files->at(i).received_all_segments == false) {
+                /* file's received_segments_num == file's segments_num,
+                 * send finished file processing message to tracker */
+
+                // TODO: send to tracker finished file message
+                wanted_files->at(i).received_all_segments = true;
+                received_files_count++;
+            }
+
+            if (segments_downloaded_num == UPDATE_SEGMENTS_LIMIT) {
+                /* 10 segments have been downloaded,
+                 * update the swarm of all files and reset the "for" loop */
+                get_swarms_from_tracker(download_arg->rank, wanted_files);
+                segments_downloaded_num = 0;
+                i = 0;
+            }
+        }
+
+        if (received_files_count == wanted_files->size()) {
+            /* the client has received the segments of all files,
+             * send a completion message to the tracker, and exit */
+
+            // TODO:
+        }
+    }
 
     /* TODO: after 10 downloaded segments,
        request from tracker the updated swarm list of all the wanted files
@@ -105,10 +193,11 @@ void tracker(int numtasks, int rank) {
             }
 
             current_file_info.owner = i;
-            current_file_info.swarm.peers_num = 0;
-            current_file_info.swarm.seeds_num = 0;
-            current_file_info.swarm.seeds[current_file_info.swarm.seeds_num] = i;
-            current_file_info.swarm.seeds_num++;
+            for (size_t k = 0; k < current_file_info.segments_num; k++) {
+                current_file_info.segments_swarms[k].clients_num = 1; // source client
+                current_file_info.segments_swarms[k].clients[0].rank = i;
+                current_file_info.segments_swarms[k].clients[0].type = PEER;
+            }
 
             files_info.push_back(current_file_info);
         }
@@ -246,9 +335,8 @@ void get_client_data(int rank,
         /* initialize current wanted file fields */
         strcpy(current_wanted_file.name, current_file_name.c_str());
         current_wanted_file.segments_num = 0;
+        current_wanted_file.received_all_segments = false;
         current_wanted_file.received_segments_num = 0;
-        current_wanted_file.swarm.peers_num = 0;
-        current_wanted_file.swarm.seeds_num = 0;
 
         for (size_t i = 0; i < MAX_SEGMENTS; i++) {
             current_wanted_file.received_segments[i] = false;
@@ -270,23 +358,23 @@ void peer(int numtasks, int rank) {
 
     get_client_data(rank, &client_files, &wanted_files);
 
-    cout << "files struct size = " << sizeof(client_files_t) << "\n";
+    // cout << "files struct size = " << sizeof(client_files_t) << "\n";
 
-    for (size_t i = 0; i < client_files.files_num; i++) {
-        cout << "file name: " << client_files.files[i].name << "\n";
-        cout << "file segments number: " << client_files.files[i].segments_num << "\n";
-        cout << "segments:\n";
+    // for (size_t i = 0; i < client_files.files_num; i++) {
+    //     cout << "file name: " << client_files.files[i].name << "\n";
+    //     cout << "file segments number: " << client_files.files[i].segments_num << "\n";
+    //     cout << "segments:\n";
 
-        /* add current file segments and increment the pointer */
-        for (size_t j = 0; j < client_files.files[i].segments_num; j++) {
-            cout << client_files.files[i].segments_hashes[j] << "\n";
-        }
-    }
+    //     /* add current file segments and increment the pointer */
+    //     for (size_t j = 0; j < client_files.files[i].segments_num; j++) {
+    //         cout << client_files.files[i].segments_hashes[j] << "\n";
+    //     }
+    // }
 
-    cout << "wanted file names:\n";
-    for (size_t i = 0; i < wanted_files.size(); i++) {
-        cout << wanted_files[i].name << "\n";
-    }
+    // cout << "wanted file names:\n";
+    // for (size_t i = 0; i < wanted_files.size(); i++) {
+    //     cout << wanted_files[i].name << "\n";
+    // }
 
     /* send this client's files data (file names and segments) to the tracker */
     // cout << "send buffer size: " << sizeof(client_files_t) << "\n";
@@ -297,7 +385,7 @@ void peer(int numtasks, int rank) {
     /* wait for the confirmation message from tracker */
     MPI_Status recv_status;
     char confirmation[4];
-    MPI_Recv(&confirmation, sizeof(client_files_t), MPI_BYTE, TRACKER_RANK, TRACKER_RANK, MPI_COMM_WORLD, &recv_status);
+    MPI_Recv(&confirmation, sizeof(confirmation), MPI_BYTE, TRACKER_RANK, TRACKER_RANK, MPI_COMM_WORLD, &recv_status);
 
     if (strcmp(confirmation, "ACK") != 0) {
         exit(-2);
@@ -359,4 +447,3 @@ int main (int argc, char *argv[]) {
 
     MPI_Finalize();
 }
-
