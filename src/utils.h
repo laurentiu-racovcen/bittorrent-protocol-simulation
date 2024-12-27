@@ -48,8 +48,17 @@ typedef struct {
 } file_info_t;
 
 typedef struct {
+    char name[MAX_FILENAME];
+    unsigned long segments_num;
+    unsigned long received_segments_num;
+    char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1]; // +1 for NULL terminator
+    bool received_segments[MAX_SEGMENTS]; // if received_segments[i] == true, the file segment with index "i" has been received by the client
+    swarm_info_t swarm;
+} wanted_file_info_t;
+
+typedef struct {
     int rank;
-    vector<string> *wanted_file_names;
+    vector<wanted_file_info_t> *wanted_files;
 } download_thread_arg;
 
 typedef struct {
