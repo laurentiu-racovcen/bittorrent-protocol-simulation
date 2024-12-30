@@ -2,7 +2,6 @@
 #define _UTILS_H_
 
 #include <iostream>
-#include <set>
 
 #define TRACKER_RANK                 0
 #define MAX_FILES                    10
@@ -12,6 +11,8 @@
 #define MAX_PEERS_NUMBER            100
 #define MAX_SEEDS_NUMBER            100
 #define MAX_MESSAGE_CONTENT_SIZE     50
+#define UPDATE_SEGMENTS_LIMIT        10
+#define PEERS_LIST_REQ_NUM            6
 
 /* tracker message codes */
 #define CLIENT_REQUEST_CODE                    1
@@ -23,7 +24,10 @@
 #define SEGMENT_REQUEST_CODE   5
 #define SEGMENT_RESPONSE_CODE  6
 
-#define UPDATE_SEGMENTS_LIMIT 10
+enum ClientType {
+    PEER,
+    SEED
+};
 
 using namespace std;
 
@@ -55,10 +59,10 @@ typedef struct {
 
 typedef struct {
     char name[MAX_FILENAME];
-    unsigned long segments_num;
-    unsigned long received_segments_num;
     bool received_all_segments;
+    unsigned long segments_num;
     char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1]; // +1 for NULL terminator
+    unsigned long received_segments_num;
     bool received_segments[MAX_SEGMENTS];              // if received_segments[i] == true, the file segment with index "i" has been received by the client
     swarm_info_t swarm;                                // segments_swarms[i] corresponds to segment_hashes[i]
 } wanted_file_info_t;
