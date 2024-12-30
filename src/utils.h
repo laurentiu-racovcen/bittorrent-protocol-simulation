@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-#define TRACKER_RANK                 0
+#define TRACKER_RANK                  0
 #define MAX_FILES                    10
 #define MAX_FILENAME                 15
 #define HASH_SIZE                    32

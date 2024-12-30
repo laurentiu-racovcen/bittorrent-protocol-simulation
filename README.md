@@ -1,6 +1,6 @@
 # **Homework 2: BitTorrent Protocol**
 
->The goal of this project is to simulate the BitTorrent peer-to-peer file sharing protocol using MPI. This protocol allows users to share files on the Internet in a decentralized manner. Downloading files using BitTorrent is considered to be fast due to the lack of a central server, which could limit the bandwidth.
+>The goal of this project is to simulate the BitTorrent peer-to-peer file sharing protocol using MPI. This protocol allows users to share files on the Internet in a decentralized manner. Downloading files using BitTorrent is considered to be faster than HTTP or FTP due to the lack of a central server, which could limit the bandwidth.
 
 ## **Table of contents**
 
@@ -14,11 +14,11 @@
 
 ## **Structures**
 The `"utils.h"` header file contains the following structures:
-- `"client_file_t"` - stores the information of a client's file: the name of the file, the segments hashes, and the segments hashes number.
+- `"client_file_t"` - stores the information of a client's file: the name of the file, the segments hashes and the segments hashes number.
 - `"client_files_t"` - stores the information of all client's files of type `client_file_t`. It is used by the clients and for the transmission of all the files information of a client to the tracker.
 - `"swarm_info_t"` - stores the information of a file's swarm: the peers list and the seeds list.
 - `"file_info_t"` - stores the information of a file: the file name, the swarm, the owner rank and the segments hashes. It is used by the tracker and for file information exchange between the tracker and the clients.
-- `"wanted_file_info_t"` - it is used by clients to store the information of a wanted file: the file name, the swarm, the segments hashes and the received segments hashes.
+- `"wanted_file_info_t"` - it is used by clients to store the information of a wanted file: the file name, the swarm, the segments hashes and the received segments.
 - `"download_thread_arg"` - it is used by the client's download thread to extract a client's rank and list of wanted files from the `"download_thread_func"` function argument.
 - `"upload_thread_arg"` - it is used by the client's upload thread to extract a client's rank and list of files from the `"upload_thread_func"` function argument.
 
@@ -35,7 +35,7 @@ The `"utils.h"` header file contains the following structures:
 **1.** Receives all clients' shared files information and stores it in the `"files_info"` vector. After receiving the information of a client, it sends an `"ACK"` message back to the client.
 
 **2.** Processes all the incoming messages, depending on the message code:
-- `"CLIENT_REQUEST_CODE"` - means that the message is a client request of a file's information (segment hashes and swarm). If the tracker has the requested file in its `"files_info"` vector, sends the file's information and marks the source client as peer of the requested file.
+- `"CLIENT_REQUEST_CODE"` - means that the message is a client request of a file's information (segment hashes and swarm). If the tracker has the requested file in its `"files_info"` vector, it sends the file's information and marks the source client as peer of the requested file.
 - `"FINISHED_DOWNLOAD_FILE_CODE"` - means that the message's source client finished downloading a certain file (the file name is located in the `"content"` field of the message). The tracker removes the client from the file's peers list and adds it to the file's seeds list.
 - `"FINISHED_ALL_DOWNLOADS_CODE"` - means that the message's source client finished downloading all of its wanted files. When receiving this code,
 it inserts the source client rank into the `finished_clients` set. If the `finished_clients`'s size is the same as the number of clients, the tracker sends to all the clients a message with the `ALL_CLIENTS_FINISHED_DOWNLOADING_CODE` code.
@@ -69,8 +69,8 @@ In the while loop, processes every received message, depending on the message co
 
 #### `get_file_segment`:
 - Function that generates an "ACK" or "NACK" response message for a requested segment:
-    -   "ACK" - if the requested file segment exists in the client's files
-    -   "NACK" - if the requested file segment doesn't exist in the client's files
+    -   "ACK" - if the requested file segment exists in the client's files.
+    -   "NACK" - if the requested file segment doesn't exist in the client's files.
 
 #### `send_next_segment_request`:
 - Function that sends a non-received segment request message to a random peer/seed, and then receives the requested segment.

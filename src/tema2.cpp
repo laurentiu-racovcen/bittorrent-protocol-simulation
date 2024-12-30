@@ -493,7 +493,7 @@ void peer(int numtasks, int rank) {
 
     r = pthread_create(&download_thread, NULL, download_thread_func, (void *) &download_arg);
     if (r) {
-        printf("Eroare la crearea thread-ului de download\n");
+        printf("Error creating the download thread.\n");
         exit(-1);
     }
 
@@ -503,19 +503,19 @@ void peer(int numtasks, int rank) {
 
     r = pthread_create(&upload_thread, NULL, upload_thread_func, (void *) &upload_arg);
     if (r) {
-        printf("Eroare la crearea thread-ului de upload\n");
+        printf("Error creating the upload thread.\n");
         exit(-1);
     }
 
     r = pthread_join(download_thread, &status);
     if (r) {
-        printf("Eroare la asteptarea thread-ului de download\n");
+        printf("Error waiting for the download thread.\n");
         exit(-1);
     }
 
     r = pthread_join(upload_thread, &status);
     if (r) {
-        printf("Eroare la asteptarea thread-ului de upload\n");
+        printf("Error waiting for the upload thread.\n");
         exit(-1);
     }
 }
@@ -526,7 +526,7 @@ int main (int argc, char *argv[]) {
     int provided;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
     if (provided < MPI_THREAD_MULTIPLE) {
-        fprintf(stderr, "MPI nu are suport pentru multi-threading\n");
+        fprintf(stderr, "MPI does not support multi-threading.\n");
         exit(-1);
     }
     MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
