@@ -34,7 +34,7 @@ using namespace std;
 typedef struct {
     char name[MAX_FILENAME];
     unsigned long segments_num;
-    char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1]; // +1 for NULL terminator
+    char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1];  // +1 for NULL terminator
 } client_file_t;
 
 typedef struct {
@@ -52,19 +52,19 @@ typedef struct {
 typedef struct {
     char name[MAX_FILENAME];
     unsigned long segments_num;
-    char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1]; // +1 for NULL terminator
+    char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1];  // +1 for NULL terminator
     swarm_info_t swarm;
-    int owner; // initial owner rank
+    int owner;                                          // initial owner rank
 } file_info_t;
 
 typedef struct {
     char name[MAX_FILENAME];
     bool received_all_segments;
     unsigned long segments_num;
-    char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1]; // +1 for NULL terminator
+    char segments_hashes[MAX_SEGMENTS][HASH_SIZE + 1];  // +1 for NULL terminator
     unsigned long received_segments_num;
-    bool received_segments[MAX_SEGMENTS];              // if received_segments[i] == true, the file segment with index "i" has been received by the client
-    swarm_info_t swarm;                                // segments_swarms[i] corresponds to segment_hashes[i]
+    bool received_segments[MAX_SEGMENTS];               // received_segments[i] corresponds to segments_hashes[i]
+    swarm_info_t swarm;
 } wanted_file_info_t;
 
 typedef struct {
