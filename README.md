@@ -1,4 +1,4 @@
-# **Homework 2: BitTorrent Protocol**
+# **BitTorrent Protocol Simulation**
 
 >The goal of this project is to simulate the BitTorrent peer-to-peer file sharing protocol using MPI. This protocol allows users to share files on the Internet in a decentralized manner. Downloading files using BitTorrent is considered to be faster than HTTP or FTP due to the lack of a central server, which could limit the bandwidth.
 
